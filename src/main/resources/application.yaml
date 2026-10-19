@@ -1,0 +1,32 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: springai-test
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/springai
+    host: localhost
+    port: 3306
+    database: springai
+    username: root
+    password: ${MYSQL_PASSWORD}
+
+  ai:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      chat:
+        model: deepseek-v4-flash
+    openai:
+      base-url: https://ws-oxshmqxdh9f1jmrs.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+      api-key: ${OPENAI_API_KEY}
+      chat:
+        model: qwen3.8-max
+        temperature: 0.7
+
+
+logging:
+  level:
+    org.springframework.ai.chat.client.advisor: DEBUG
+    com.example.springaitest: DEBUG
