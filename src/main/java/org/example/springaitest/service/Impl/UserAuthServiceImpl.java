@@ -3,9 +3,8 @@ package org.example.springaitest.service.Impl;
 import org.example.springaitest.dto.UserCredentials;
 import org.example.springaitest.exception.BaseException;
 import org.example.springaitest.pojo.UserLogin;
-import org.example.springaitest.properties.JwtProperties;
 import org.example.springaitest.service.UserAuthService;
-import org.example.springaitest.utils.JwtUtil;
+import org.example.springaitest.service.JwtSessionService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,21 +12,19 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
-
 @Service
 public class UserAuthServiceImpl implements UserAuthService {
 
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;
-    private final JwtProperties jwtProperties;
+    private final JwtSessionService jwtSessionService;
 
     public UserAuthServiceImpl(JdbcTemplate jdbcTemplate,
                                PasswordEncoder passwordEncoder,
-                               JwtProperties jwtProperties) {
+                               JwtSessionService jwtSessionService) {
         this.jdbcTemplate = jdbcTemplate;
         this.passwordEncoder = passwordEncoder;
-        this.jwtProperties = jwtProperties;
+        this.jwtSessionService = jwtSessionService;
     }
 
     @Override
@@ -80,8 +77,7 @@ public class UserAuthServiceImpl implements UserAuthService {
     }
 
     private UserLogin createLoginResult(Long userId, String username) {
-        String token = JwtUtil.createJWT(jwtProperties.getUserSecretKey(), jwtProperties.getUserTtl(),
-                Map.of("userId", userId, "username", username));
+        String token = jwtSessionService.issue(userId, username);
 
         return UserLogin.builder()
                 .id(userId)
