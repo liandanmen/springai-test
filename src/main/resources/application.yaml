@@ -1,9 +1,12 @@
 server:
   port: 8081
+
 spring:
   application:
     name: springai-test
-
+  sql:
+    init:
+      mode: always
   datasource:
     url: jdbc:mysql://localhost:3306/springai
     host: localhost
@@ -11,7 +14,6 @@ spring:
     database: springai
     username: root
     password: ${MYSQL_PASSWORD}
-
   ai:
     deepseek:
       base-url: https://api.deepseek.com
@@ -25,6 +27,11 @@ spring:
         model: qwen3.8-flash
         temperature: 0.7
 
+springai:
+  jwt:
+    user-secret-key: ${JWT_USER_SECRET_KEY:}
+    user-ttl: 86400000
+    user-token-name: Authorization
 
 logging:
   level:
