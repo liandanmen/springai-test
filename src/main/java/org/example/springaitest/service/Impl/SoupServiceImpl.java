@@ -9,11 +9,15 @@ import org.example.springaitest.mapper.SoupGameMessageMapper;
 import org.example.springaitest.pojo.SoupGame;
 import org.example.springaitest.pojo.SoupGameMessage;
 import org.example.springaitest.service.SoupService;
+import org.redisson.RedissonLock;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -22,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -32,9 +37,12 @@ public class SoupServiceImpl implements SoupService {
     @Qualifier("soupChatClient")
     private final ChatClient soupChatClient;
     private final ChatMemoryRepository chatMemoryRepository;
+    @Autowired
+    private RedissonClient redissonClient;
 
     private static final Random RANDOM = new Random();
     private static final String ENDED_TIP = "本局已结束，请新开一局。";
+    private static final String ERROR_TIP = "请勿重复提交。";
 
     @Override
     public Map<String, String> start(Long userId, String gameId) {
@@ -85,20 +93,38 @@ public class SoupServiceImpl implements SoupService {
     @Override
     public String guess(Long userId, String gameId, String story) {
         SoupGame game = requireOwnedGame(userId, gameId);
-
         if (!"playing".equals(game.getStatus())) return ENDED_TIP;
-        String result = soupChatClient.prompt()
-                .system(SoupPrompt.JUDGE_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret()))
-                .messages(loadContext(gameId))
-                .user(story)
-                .call()
-                .content();
-        saveGameMessage(gameId, "USER", story, true);
-        saveGameMessage(gameId, "ASSISTANT", result, false);
-        if (result != null && result.contains("[CORRECT]")) {
-            updateStatus(userId, gameId, "solved");
+        RLock lock = redissonClient.getLock(gameId);
+        boolean isLocked = false;
+        try {
+            if(!isLocked){  // 尝试获取锁
+                isLocked = lock.tryLock(10, 10, TimeUnit.MINUTES);  // 等待10秒，锁持有10分钟
+                String result = soupChatClient.prompt()
+                        .system(SoupPrompt.JUDGE_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret()))
+                        .messages(loadContext(gameId))
+                        .user(story)
+                        .call()
+                        .content();
+                saveGameMessage(gameId, "USER", story, true);
+                saveGameMessage(gameId, "ASSISTANT", result, false);
+                if (result != null && result.contains("[CORRECT]")) {
+                    updateStatus(userId, gameId, "solved");
+                }
+                return result;
+            }
+
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
-        return result;
+        finally {
+            if (isLocked) {
+                lock.unlock();
+            }
+        }
+
+        // 如果没有获取到锁，返回提示信息
+        return ERROR_TIP;
+
     }
 
     @Override

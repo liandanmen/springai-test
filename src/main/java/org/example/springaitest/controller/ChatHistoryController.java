@@ -12,6 +12,7 @@ import org.example.springaitest.handler.JwtAuthenticationInterceptor;
 import org.example.springaitest.mapper.AiSessionMapper;
 import org.example.springaitest.pojo.AiSession;
 import org.example.springaitest.result.Result;
+import org.example.springaitest.service.ChatHistoryService;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,35 +31,23 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Tag(name = "chat历史接口")
 public class ChatHistoryController {
-    private final ChatMemoryRepository chatMemoryRepository;
-    private final AiSessionMapper aiSessionMapper;
+
+    private final ChatHistoryService chatHistoryService;
 
     @PostMapping("/sessions")
     @Operation(summary = "创建聊天会话")
     public Result<ChatSessionResponse> createSession(
             @RequestBody(required = false) CreateChatSessionRequest request,
             @RequestAttribute(JwtAuthenticationInterceptor.USER_ID_ATTRIBUTE) Long userId) {
-        AiSession session = new AiSession();
-        session.setId(UUID.randomUUID().toString());
-        session.setConversationId(UUID.randomUUID().toString());
-        session.setUserId(userId);
-        String title = request == null ? null : request.title();
-        title = title == null || title.isBlank() ? "新会话" : title.trim();
-        session.setTitle(title.length() > 128 ? title.substring(0, 128) : title);
-        aiSessionMapper.insert(session);
-        return Result.success(new ChatSessionResponse(session.getId(), session.getTitle(), List.of()));
+        ChatSessionResponse session = chatHistoryService.createSession(request, userId);
+        return Result.success(session);
     }
 
     @GetMapping("/sessions")
     @Operation(summary = "获取当前用户的聊天会话")
     public Result<List<ChatSessionResponse>> sessions(
             @RequestAttribute(JwtAuthenticationInterceptor.USER_ID_ATTRIBUTE) Long userId) {
-        List<ChatSessionResponse> sessions = aiSessionMapper.selectList(Wrappers.<AiSession>lambdaQuery()
-                        .eq(AiSession::getUserId, userId)
-                        .orderByDesc(AiSession::getUpdatedAt))
-                .stream()
-                .map(session -> new ChatSessionResponse(session.getId(), session.getTitle(), List.of()))
-                .toList();
+        List<ChatSessionResponse> sessions = chatHistoryService.sessions(userId);
         return Result.success(sessions);
     }
 
@@ -67,13 +56,8 @@ public class ChatHistoryController {
     public Result<ChatSessionResponse> detail(
             @PathVariable String sessionId,
             @RequestAttribute(JwtAuthenticationInterceptor.USER_ID_ATTRIBUTE) Long userId) {
-        AiSession session = requireOwnedSession(sessionId, userId);
-        List<ChatMessageResponse> messages = chatMemoryRepository
-                .findByConversationId(session.getConversationId()).stream()
-                .map(message -> new ChatMessageResponse(
-                        message.getMessageType().getValue(), message.getText()))
-                .toList();
-        return Result.success(new ChatSessionResponse(session.getId(), session.getTitle(), messages));
+        ChatSessionResponse session = chatHistoryService.detail(sessionId, userId);
+        return Result.success(session);
     }
 
     @DeleteMapping("/sessions/{sessionId}")
@@ -81,19 +65,9 @@ public class ChatHistoryController {
     public Result<Void> delete(
             @PathVariable String sessionId,
             @RequestAttribute(JwtAuthenticationInterceptor.USER_ID_ATTRIBUTE) Long userId) {
-        AiSession session = requireOwnedSession(sessionId, userId);
-        aiSessionMapper.delete(Wrappers.<AiSession>lambdaQuery()
-                .eq(AiSession::getId, sessionId)
-                .eq(AiSession::getUserId, userId));
-        chatMemoryRepository.deleteByConversationId(session.getConversationId());
+        chatHistoryService.delete(sessionId, userId);
         return Result.success();
     }
 
-    private AiSession requireOwnedSession(String sessionId, Long userId) {
-        AiSession session = aiSessionMapper.selectOne(Wrappers.<AiSession>lambdaQuery()
-                .eq(AiSession::getId, sessionId)
-                .eq(AiSession::getUserId, userId));
-        if (session == null) throw new BaseException("会话不存在或无权访问");
-        return session;
-    }
+
 }

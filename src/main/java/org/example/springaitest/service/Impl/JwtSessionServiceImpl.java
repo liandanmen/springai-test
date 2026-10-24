@@ -16,6 +16,7 @@ import java.util.Map;
 @Service
 public class JwtSessionServiceImpl implements JwtSessionService {
     private static final String KEY_PREFIX = "auth:jwt:user:";
+    //增加对话限流
     private static final DefaultRedisScript<Long> ROTATE_SCRIPT;
     static {
         ROTATE_SCRIPT=new DefaultRedisScript<>();
@@ -28,6 +29,7 @@ public class JwtSessionServiceImpl implements JwtSessionService {
     @Autowired
     private JwtProperties jwtProperties;
 
+    //颁发token，存入redis
     @Override
     public String issue(Long userId, String username) {
         String token = createToken(userId, username);
@@ -35,6 +37,7 @@ public class JwtSessionServiceImpl implements JwtSessionService {
         return token;
     }
 
+    //用户有操作，刷新token（续期）
     @Override
     public String rotate(Long userId, String username, String currentToken) {
         String nextToken = createToken(userId, username);

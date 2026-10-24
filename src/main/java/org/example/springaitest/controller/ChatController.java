@@ -10,8 +10,10 @@ import org.example.springaitest.pojo.AiSession;
 import org.example.springaitest.result.Result;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -23,6 +25,8 @@ public class ChatController {
     @Qualifier("chatClient")
     private final ChatClient chatClient;
     private final AiSessionMapper aiSessionMapper;
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
 
     @PostMapping(value = "/ai/chat")
@@ -36,6 +40,7 @@ public class ChatController {
         if (session == null) {
             throw new BaseException("会话不存在或无权访问");
         }
+
         // 更新会话标题
         if ("新会话".equals(session.getTitle()) && request.getMessage() != null) {
             String title = request.getMessage().trim();
@@ -45,6 +50,7 @@ public class ChatController {
                     .eq(AiSession::getUserId, userId)
                     .set(AiSession::getTitle, title));
         }
+        stringRedisTemplate.delete("session:list" + userId);
         // 获取结果
         String result = chatClient.prompt()
                 .user(request.getMessage())
