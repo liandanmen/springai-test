@@ -1,28 +1,29 @@
 package org.example.springaitest.service.Impl;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import org.example.springaitest.dto.UserCredentials;
 import org.example.springaitest.exception.BaseException;
+import org.example.springaitest.mapper.UserAccountMapper;
+import org.example.springaitest.pojo.UserAccount;
 import org.example.springaitest.pojo.UserLogin;
 import org.example.springaitest.service.UserAuthService;
 import org.example.springaitest.service.JwtSessionService;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 @Service
 public class UserAuthServiceImpl implements UserAuthService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final UserAccountMapper userAccountMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtSessionService jwtSessionService;
 
-    public UserAuthServiceImpl(JdbcTemplate jdbcTemplate,
+    public UserAuthServiceImpl(UserAccountMapper userAccountMapper,
                                PasswordEncoder passwordEncoder,
                                JwtSessionService jwtSessionService) {
-        this.jdbcTemplate = jdbcTemplate;
+        this.userAccountMapper = userAccountMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtSessionService = jwtSessionService;
     }
@@ -37,16 +38,16 @@ public class UserAuthServiceImpl implements UserAuthService {
         String password = validatePassword(credentials.password());
         String passwordHash = passwordEncoder.encode(password);
 
+        UserAccount newAccount = new UserAccount();
+        newAccount.setUsername(username);
+        newAccount.setPasswordHash(passwordHash);
         try {
-            jdbcTemplate.update("INSERT INTO app_user (username, password_hash) VALUES (?, ?)",
-                    username, passwordHash);
+            userAccountMapper.insert(newAccount);
         } catch (DuplicateKeyException exception) {
             throw new BaseException("用户名已被注册");
         }
 
-        Long userId = jdbcTemplate.queryForObject(
-                "SELECT id FROM app_user WHERE username = ?", Long.class, username);
-        return createLoginResult(userId, username);
+        return createLoginResult(newAccount.getId(), username);
     }
 
     @Override
@@ -60,20 +61,14 @@ public class UserAuthServiceImpl implements UserAuthService {
         if (username.isEmpty() || username.length() > 64) {
             throw new BaseException("用户名或密码错误");
         }
-        List<UserAccount> accounts = jdbcTemplate.query(
-                "SELECT id, username, password_hash FROM app_user WHERE username = ?",
-                (resultSet, rowNumber) -> new UserAccount(
-                        resultSet.getLong("id"),
-                        resultSet.getString("username"),
-                        resultSet.getString("password_hash")),
-                username);
+        UserAccount account = userAccountMapper.selectOne(
+                Wrappers.<UserAccount>lambdaQuery().eq(UserAccount::getUsername, username));
 
-        if (accounts.isEmpty() || !passwordEncoder.matches(credentials.password(), accounts.getFirst().passwordHash())) {
+        if (account == null || !passwordEncoder.matches(credentials.password(), account.getPasswordHash())) {
             throw new BaseException("用户名或密码错误");
         }
 
-        UserAccount account = accounts.getFirst();
-        return createLoginResult(account.id(), account.username());
+        return createLoginResult(account.getId(), account.getUsername());
     }
 
     private UserLogin createLoginResult(Long userId, String username) {
@@ -109,7 +104,4 @@ public class UserAuthServiceImpl implements UserAuthService {
         return password;
     }
 
-    // 用户账号信息
-    private record UserAccount(long id, String username, String passwordHash) {
-    }
 }

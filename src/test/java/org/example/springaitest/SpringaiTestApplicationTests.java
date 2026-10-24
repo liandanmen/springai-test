@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.datasource.driver-class-name=org.h2.Driver",
+        "spring.flyway.enabled=false",
         "spring.sql.init.mode=never",
         "spring.ai.deepseek.api-key=test-deepseek-key",
         "spring.ai.openai.api-key=test-openai-key",

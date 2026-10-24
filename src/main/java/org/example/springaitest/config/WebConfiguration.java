@@ -1,4 +1,4 @@
-package org.example.springaitest.cofig;
+package org.example.springaitest.config;
 
 
 import org.springframework.context.annotation.Configuration;

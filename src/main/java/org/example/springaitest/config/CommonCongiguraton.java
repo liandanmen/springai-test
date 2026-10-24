@@ -1,4 +1,4 @@
-package org.example.springaitest.cofig;
+package org.example.springaitest.config;
 
 
 import org.springframework.ai.chat.client.ChatClient;
@@ -44,7 +44,6 @@ public class CommonCongiguraton {
     }
     @Bean
     public ChatClient chatClient(OpenAiChatModel mm, ChatMemory chatMemory) {
-        //顾问层，自动翻笔记
         return ChatClient.builder(mm)
                 .defaultSystem("你是一个沉稳靠谱，不说废话的助手,叫做张德帅")
                 .defaultAdvisors(
@@ -52,6 +51,14 @@ public class CommonCongiguraton {
                         MessageChatMemoryAdvisor
                                 .builder(chatMemory)
                                 .build()
-                ).build();
+                )
+                .build();
+    }
+
+    @Bean(name = "soupChatClient")
+    public ChatClient soupChatClient(OpenAiChatModel mm) {
+        return ChatClient.builder(mm)
+                .defaultAdvisors(new SimpleLoggerAdvisor())
+                .build();
     }
 }

@@ -4,11 +4,11 @@ import java.util.List;
 import java.util.Map;
 
 public interface SoupService {
-    Map<String, String> start(String gameId);
-    String ask(String gameId, String question);
-    String guess(String gameId, String story);
-    String reveal(String gameId);
-    List<Map<String, String>> listSessions();
-    Map<String, Object> detail(String gameId);
-    void delete(String gameId);
+    Map<String, String> start(Long userId, String gameId);
+    String ask(Long userId, String gameId, String question);
+    String guess(Long userId, String gameId, String story);
+    String reveal(Long userId, String gameId);
+    List<Map<String, String>> listSessions(Long userId);
+    Map<String, Object> detail(Long userId, String gameId);
+    void delete(Long userId, String gameId);
 }

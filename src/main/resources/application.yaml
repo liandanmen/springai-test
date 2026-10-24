@@ -4,17 +4,14 @@ server:
 spring:
   application:
     name: springai-test
-  sql:
-    init:
-      mode: always
   datasource:
-    url: jdbc:mysql://localhost:3306/springai
-    host: localhost
-    port: 3306
-    database: springai
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:springai}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
     password: ${MYSQL_PASSWORD}
-
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 2
+    locations: classpath:db/migration
   ai:
     deepseek:
       base-url: https://api.deepseek.com
