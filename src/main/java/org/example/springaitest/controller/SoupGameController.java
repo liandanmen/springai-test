@@ -80,4 +80,5 @@ public class SoupGameController {
         soupService.delete(userId, gameId);
         return Result.success();
     }
+
 }

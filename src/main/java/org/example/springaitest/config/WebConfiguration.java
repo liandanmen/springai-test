@@ -23,7 +23,7 @@ public class WebConfiguration implements WebMvcConfigurer {
     @Override
     public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
         registry.addInterceptor(jwtAuthenticationInterceptor).addPathPatterns("/api/**").order(0);
-        registry.addInterceptor(aiChatRateLimitInterceptor).addPathPatterns("/api/ai/chat").order(1);
+        registry.addInterceptor(aiChatRateLimitInterceptor).addPathPatterns("/api/ai/chat", "/api/kb/chat").order(1);
         registry.addInterceptor(aiChatRateLimitInterceptor).addPathPatterns("/api/soup/guess").order(2);
     }
 

@@ -13,10 +13,12 @@ import org.redisson.RedissonLock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -100,9 +102,9 @@ public class SoupServiceImpl implements SoupService {
             if(!isLocked){  // 尝试获取锁
                 isLocked = lock.tryLock(10, 10, TimeUnit.MINUTES);  // 等待10秒，锁持有10分钟
                 String result = soupChatClient.prompt()
-                        .system(SoupPrompt.JUDGE_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret()))
-                        .messages(loadContext(gameId))
                         .user(story)
+                        .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, SoupPrompt.HOST_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret())))
+                        .messages(loadContext(gameId))
                         .call()
                         .content();
                 saveGameMessage(gameId, "USER", story, true);
@@ -189,6 +191,7 @@ public class SoupServiceImpl implements SoupService {
         chatMemoryRepository.deleteByConversationId(game.getConversationId());
     }
 
+    // 加载会话上下文
     private List<Message> loadContext(String gameId) {
         return soupGameMessageMapper
                 .selectList(Wrappers.<SoupGameMessage>lambdaQuery()

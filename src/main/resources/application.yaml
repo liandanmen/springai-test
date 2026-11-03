@@ -12,6 +12,7 @@ spring:
     baseline-on-migrate: true
     baseline-version: 2
     locations: classpath:db/migration
+    enabled: true
   ai:
     deepseek:
       base-url: https://api.deepseek.com
@@ -24,6 +25,9 @@ spring:
       chat:
         model: qwen3.8-flash
         temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v4
   data:
     redis:
       host: 127.0.0.1
