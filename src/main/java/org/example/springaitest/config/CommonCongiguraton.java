@@ -2,6 +2,7 @@ package org.example.springaitest.config;
 
 
 import org.example.springaitest.constant.KbPrompt;
+import org.example.springaitest.constant.MessageConstant;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
@@ -70,19 +71,25 @@ public class CommonCongiguraton {
                                 .build())
                 .build();
     }
-
     @Bean(name = "kbChatClient")
     public ChatClient kbChatClient(OpenAiChatModel mm, VectorStore soupVectorStore) {
         return ChatClient.builder(mm)
-                .defaultSystem(KbPrompt.KB_SYSTEM)
                 .defaultAdvisors(
                         new SimpleLoggerAdvisor(),
                         QuestionAnswerAdvisor.builder(soupVectorStore)
                                 .searchRequest(SearchRequest.builder()
-                                        .topK(4)
+                                        .topK(3)
                                         .similarityThreshold(0.4)
                                         .build())
                                 .build())
+                .build();
+    }
+
+    @Bean(name = "kbAnswerClient")
+    public ChatClient kbAnswerClient(OpenAiChatModel mm) {
+//        用 ChatClient 时不带 QuestionAnswerAdvisor（那个会自己再检索一次，和手工检索冲突）
+        return ChatClient.builder(mm)
+                .defaultSystem(KbPrompt.KB_PROMPT)
                 .build();
     }
 }
