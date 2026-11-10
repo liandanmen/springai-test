@@ -22,6 +22,7 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -216,6 +217,26 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
         boolean cited = answer != null && answer.matches("(?s).*\\[\\d+\\].*");
         return new KbAskResponse(cited, answer, cited ? searchHits : List.of());
 //        return new KbAskResponse(true, answer, searchHits);
+    }
+
+    @Override
+    public Flux<String> askStream(String question, List<KbSearchHit> hits) {
+        return kbAnswerClient.prompt()
+                .system(KbPrompt.KB_SYSTEM)
+                .user(buildUserMessage(question, hits))
+                .stream()
+                .content();
+    }
+
+    private String buildUserMessage(String question, List<KbSearchHit> hits) {
+        //拼资料，编号与 refs 下标严格对应（从 1 开始）
+        StringBuilder ctx = new StringBuilder();
+        for (KbSearchHit h : hits) {
+            ctx.append("[").append(h.index()).append("] 来自 ")
+                    .append(h.fileName()).append(" 第").append(h.chunkIndex() + 1).append("段\n")
+                    .append(h.content()).append("\n\n");
+        }
+        return "资料：\n" + ctx + "\n用户问题：" + question;
     }
 
 
