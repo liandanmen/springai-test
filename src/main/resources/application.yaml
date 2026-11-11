@@ -35,6 +35,12 @@ spring:
       password: ${REDIS_PASSWORD}
       database: 1
 
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 2MB
+      max-request-size: 4MB
+
 springai:
   jwt:
     user-secret-key: ${JWT_USER_SECRET_KEY:}

@@ -112,13 +112,20 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
                             "chunkIndex", i)));                      // ★ 用 i
         }
         // 6. 批量加向量（一次调用）
+        // 7. 标记完成
+        // 假如向量接口超时，文档库已经写入但是向量库状态还是 INDEX，标记为 FAILED
         if (!vectorDocs.isEmpty()) {
             vectorStore.add(vectorDocs);
         }
-
-// 7. 标记完成
-        document.setStatus("INDEXED");
-        kbDocumentMapper.updateById(document);
+        try {
+            vectorStore.add(vectorDocs);
+            document.setStatus("INDEXED");
+        }catch (Exception e){
+            document.setStatus("FAILED");
+            throw e;
+        }finally {
+            kbDocumentMapper.updateById(document);
+        }
 
         return new KbIndexResult(documentId, chunks.size(), cleanedContent.length());
     }
@@ -196,7 +203,8 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
         //首先检索
         List<KbSearchHit> searchHits = search(userId, trim);
         if (searchHits.isEmpty()) {   //未检索到直接返回不调模型
-            return new KbAskResponse(false, EMPTY_ANSWER, null);
+            return new KbAskResponse(false, EMPTY_ANSWER, List.of());  //集合类型不能返回null，前端回NPE
+//            return new KbAskResponse(false, EMPTY_ANSWER, null);  //集合类型不能返回null，前端回NPE
         }
         //拼资料，编号与 refs 下标严格对应（从 1 开始）
         StringBuilder ctx = new StringBuilder();
@@ -239,7 +247,7 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
                         d.getChunkCount(),
                         d.getCharCount(),
                         d.getStatus(),
-                        d.getCreateTime()))
+                        d.getCreateAt()))
                 .toList();
     }
 

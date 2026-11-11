@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.example.springaitest.result.Result;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.sql.SQLIntegrityConstraintViolationException;
 
@@ -47,6 +48,10 @@ public class GlobalExceptionHandler {
         }else {
             return Result.error(MessageConstant.UNKNOWN_ERROR);
         }
+    }
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public Result<?> handleMaxUpload(MaxUploadSizeExceededException e) {
+        return Result.error("文件太大，最大支持 2MB");   // 用你 Result 的失败方法
     }
 
 
