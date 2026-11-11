@@ -20,5 +20,6 @@ public class KbChunk {
     private String content;
     @TableField("vector_id")
     private String vectorId;
+    @TableField("created_at")
     private String createdAt;
 }

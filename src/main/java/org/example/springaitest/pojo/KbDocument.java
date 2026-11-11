@@ -20,5 +20,8 @@ public class KbDocument {
     private Integer chunkCount;
     @TableField("status")
     private String status;
+    @TableField("created_at")
+    private String createAt;
+
 
 }

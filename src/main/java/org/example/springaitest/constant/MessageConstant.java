@@ -6,5 +6,6 @@ public class MessageConstant {
     public static final String UNKNOWN_ERROR = "未知错误";
     public static final double SIMILARITY_THRESHOLD = 0.30;
     public static final String EMPTY_ANSWER = "题库中暂时没有相关内容，换个问法试试。";
+    public static final String DELETE_SUCCESS = "文档删除成功";
 
 }

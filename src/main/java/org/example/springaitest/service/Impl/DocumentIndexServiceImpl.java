@@ -1,12 +1,10 @@
 package org.example.springaitest.service.Impl;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import lombok.RequiredArgsConstructor;
 import org.example.springaitest.constant.KbPrompt;
 import org.example.springaitest.constant.MessageConstant;
-import org.example.springaitest.dto.KbAskResponse;
-import org.example.springaitest.dto.KbChatResponse;
-import org.example.springaitest.dto.KbIndexResult;
-import org.example.springaitest.dto.KbSearchHit;
+import org.example.springaitest.dto.*;
 import org.example.springaitest.mapper.KbChunkMapper;
 import org.example.springaitest.mapper.KbDocumentMapper;
 import org.example.springaitest.pojo.KbChunk;
@@ -15,7 +13,6 @@ import org.example.springaitest.service.DocumentIndexService;
 import org.example.springaitest.service.SensitiveWordEngine;
 import org.example.springaitest.service.SensitiveWordService;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -24,6 +21,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -226,6 +224,45 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
                 .user(buildUserMessage(question, hits))
                 .stream()
                 .content();
+    }
+
+    //列表
+    public List<KbDocumentVO> list(Long userId) {
+        return kbDocumentMapper.selectList(
+                        Wrappers.<KbDocument>lambdaQuery()
+                                .eq(KbDocument::getUserId, userId)
+                                .orderByDesc(KbDocument::getId))
+                .stream()
+                .map(d -> new KbDocumentVO(
+                        d.getId(),
+                        d.getFileName(),
+                        d.getChunkCount(),
+                        d.getCharCount(),
+                        d.getStatus(),
+                        d.getCreateTime()))
+                .toList();
+    }
+
+    //文档删除
+    public String delete(Long userId,Long documentId){
+        //首先校验
+        KbDocument kbDocument = kbDocumentMapper.selectOne(Wrappers.<KbDocument>lambdaQuery()
+                .eq(KbDocument::getUserId, userId)
+                .eq(KbDocument::getId, documentId));
+        if (kbDocument==null){
+            throw new RuntimeException("文档不存在");
+        }
+        //找出所有向量，首先删除向量，再删数据库
+        List<KbChunk> kbChunks = kbChunkMapper.selectList(Wrappers.<KbChunk>lambdaQuery()
+                .eq(KbChunk::getDocumentId, documentId));
+        List<String> vectorIds = kbChunks.stream().map(KbChunk::getVectorId).filter(Objects::nonNull).toList();
+
+        if (!vectorIds.isEmpty()){
+            vectorStore.delete(vectorIds);
+        }
+        kbChunkMapper.delete(Wrappers.<KbChunk>lambdaQuery().eq(KbChunk::getDocumentId, documentId));
+        kbDocumentMapper.deleteById(documentId);
+        return MessageConstant.DELETE_SUCCESS;
     }
 
     private String buildUserMessage(String question, List<KbSearchHit> hits) {
