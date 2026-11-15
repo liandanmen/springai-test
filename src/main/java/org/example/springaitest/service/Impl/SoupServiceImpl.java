@@ -9,16 +9,13 @@ import org.example.springaitest.mapper.SoupGameMessageMapper;
 import org.example.springaitest.pojo.SoupGame;
 import org.example.springaitest.pojo.SoupGameMessage;
 import org.example.springaitest.service.SoupService;
-import org.redisson.RedissonLock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.memory.ChatMemoryRepository;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -44,7 +41,6 @@ public class SoupServiceImpl implements SoupService {
 
     private static final Random RANDOM = new Random();
     private static final String ENDED_TIP = "本局已结束，请新开一局。";
-    private static final String ERROR_TIP = "请勿重复提交。";
 
     @Override
     public Map<String, String> start(Long userId, String gameId) {
@@ -99,34 +95,37 @@ public class SoupServiceImpl implements SoupService {
         RLock lock = redissonClient.getLock(gameId);
         boolean isLocked = false;
         try {
-            if(!isLocked){  // 尝试获取锁
-                isLocked = lock.tryLock(10, 10, TimeUnit.MINUTES);  // 等待10秒，锁持有10分钟
-                String result = soupChatClient.prompt()
-                        .user(story)
-                        .advisors(a -> a.param(QuestionAnswerAdvisor.FILTER_EXPRESSION, SoupPrompt.HOST_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret())))
-                        .messages(loadContext(gameId))
-                        .call()
-                        .content();
-                saveGameMessage(gameId, "USER", story, true);
-                saveGameMessage(gameId, "ASSISTANT", result, false);
-                if (result != null && result.contains("[CORRECT]")) {
-                    updateStatus(userId, gameId, "solved");
-                }
-                return result;
+            // 先抢锁，抢不到就退出（不能边判断边继续往下走）
+            isLocked = lock.tryLock(10, 10, TimeUnit.MINUTES);  // 最多等 10 秒，拿到后持有 10 分钟
+            if (!isLocked) {
+                throw new BaseException("上一次判定还在进行，请稍后再试");
             }
 
+            String result = soupChatClient.prompt()
+                    // 判定用 JUDGE_PROMPT（会输出 [CORRECT]/[WRONG]）
+                    // 不能用 HOST_PROMPT —— 那是"回答问题"用的，玩家提交整段故事时它会当成闲聊，
+                    // 直接回一句"先继续推理吧"，于是永远判不出对错
+                    .system(SoupPrompt.JUDGE_PROMPT.replace(SoupPrompt.SECRET_PLACEHOLDER, game.getSecret()))
+                    .messages(loadContext(gameId))
+                    .user(story)
+                    .call()
+                    .content();
+
+            saveGameMessage(gameId, "USER", story, true);
+            saveGameMessage(gameId, "ASSISTANT", result, false);
+            if (result != null && result.contains("[CORRECT]")) {
+                updateStatus(userId, gameId, "solved");
+            }
+            return result;
+
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        finally {
-            if (isLocked) {
+            Thread.currentThread().interrupt();     // 恢复中断标记，不要吞掉
+            throw new BaseException("判定被中断，请重试");
+        } finally {
+            if (isLocked && lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
         }
-
-        // 如果没有获取到锁，返回提示信息
-        return ERROR_TIP;
-
     }
 
     @Override

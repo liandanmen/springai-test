@@ -7,5 +7,6 @@ public class MessageConstant {
     public static final double SIMILARITY_THRESHOLD = 0.30;
     public static final String EMPTY_ANSWER = "根据提供的文档，未找到相关内容。";
     public static final String DELETE_SUCCESS = "文档删除成功";
+    public static final String DOC_ALL_BLOCKED = "文档内容包含违规信息，无法索引";
 
 }
