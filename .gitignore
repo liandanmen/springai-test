@@ -2,3 +2,6 @@ target/
 .idea/
 *.iml
 .vscode/
+
+# 向量索引落盘目录（本地生成，不入库）
+data/

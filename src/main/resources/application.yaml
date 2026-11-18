@@ -46,8 +46,15 @@ springai:
     user-secret-key: ${JWT_USER_SECRET_KEY:}
     user-ttl: 86400000
     user-token-name: Authorization
+  # 知识库检索参数：默认值由 RAG_EVAL.md 的评测结论得出，调参不用改代码
+  kb:
+    chunk-size: 300              # 每块 token 上限；评测中 300 的 hit@1 显著优于 500
+    top-k: 5                     # 召回条数
+    similarity-threshold: 0.30   # 低于该值的块丢弃
+    index-file: data/vector-index.json   # 向量索引落盘路径
+    rebuild-on-start: false      # true = 每次启动强制从数据库重建（会重新调 embedding）
 
 logging:
   level:
     org.springframework.ai.chat.client.advisor: DEBUG
-    com.example.springaitest: DEBUG
+    org.example.springaitest: DEBUG

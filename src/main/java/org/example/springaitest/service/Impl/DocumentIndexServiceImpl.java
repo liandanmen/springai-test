@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.example.springaitest.constant.KbPrompt;
 import org.example.springaitest.constant.MessageConstant;
+import org.example.springaitest.config.KbProperties;
 import org.example.springaitest.exception.BaseException;
 import org.example.springaitest.dto.*;
 import org.example.springaitest.mapper.KbChunkMapper;
@@ -14,9 +15,9 @@ import org.example.springaitest.pojo.KbDocument;
 import org.example.springaitest.service.DocumentIndexService;
 import org.example.springaitest.service.SensitiveWordEngine;
 import org.example.springaitest.service.SensitiveWordService;
+import org.example.springaitest.utils.KbChunking;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -28,7 +29,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.example.springaitest.constant.MessageConstant.EMPTY_ANSWER;
-import static org.example.springaitest.constant.MessageConstant.SIMILARITY_THRESHOLD;
 
 @Slf4j
 @Service
@@ -38,6 +38,7 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
     private final KbChunkMapper kbChunkMapper;
     private final SensitiveWordService sensitiveWordService;
     private final SimpleVectorStore vectorStore;
+    private final KbProperties kbProperties;
     @Qualifier("kbAnswerClient")
     private final ChatClient kbAnswerClient;
 
@@ -55,31 +56,10 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
             throw new BaseException("文档内容为空");
         }
 
-        //分块
-        TokenTextSplitter splitter = TokenTextSplitter.builder()
-                .withChunkSize(300)             // 每块最多 300 个 token
-                .withMinChunkSizeChars(100)     // 太短的块尝试与后一块合并
-                .withMinChunkLengthToEmbed(5)   // 少于 5 个字符的块直接丢弃
-                .withKeepSeparator(true)        // 保留换行等分隔符
-                .withPunctuationMarks(List.of('。', '！', '？', '；', '：', '\n'))    // 指定分隔符
-                .build();
-        //清洗内容
-        String cleanedContent = cleanText(rawContent);
-        List<Document> chunks = new ArrayList<>(splitter.split(new Document(cleanedContent)));
-        if (chunks.size() > 1) {
-            Document last = chunks.get(chunks.size() - 1);
-            // 尾块太短 → 并到前一块，而不是丢弃
-            if (last.getText().trim().length() < 50) {
-                Document prev = chunks.get(chunks.size() - 2);
-                Document merged = new Document(
-                        prev.getId(),
-                        prev.getText() + last.getText(),      // 拼起来
-                        prev.getMetadata());
-                chunks.set(chunks.size() - 2, merged);
-                chunks.remove(chunks.size() - 1);
-            }
-
-        }
+        // 清洗 + 分块：纯逻辑抽到 KbChunking，便于单测和评测换参数
+        // 块大小从配置读（默认 300，值来自 RAG_EVAL.md 的评测结论）
+        String cleanedContent = KbChunking.cleanText(rawContent);
+        List<Document> chunks = KbChunking.splitToDocuments(cleanedContent, kbProperties.chunkSize());
 
         // 3. 块级敏感词过滤：BLOCK 整块丢弃、MASK 块内打码、REVIEW 放行并记日志
         //    为什么按块而不是按整篇：整篇里有一个 BLOCK 词就拒收，会误杀正常文档
@@ -162,6 +142,11 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
             kbDocumentMapper.updateById(document);
         }
 
+        // 新增向量后立刻落盘：否则重启时索引文件还是旧的，新文档"消失"
+        if ("INDEXED".equals(document.getStatus())) {
+            persistIndex();
+        }
+
         log.info("索引完成 userId={} 文件名={} documentId={} 字符数={} 原切分块数={} 入库块数={} 丢弃块数={} 状态={} 耗时={}ms",
                 userId, fileName, documentId, cleanedContent.length(), chunks.size(),
                 keptContents.size(), dropped, document.getStatus(),
@@ -181,8 +166,8 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
         List<Document> docs = vectorStore.similaritySearch(
                 SearchRequest.builder()
                         .query(question)
-                        .topK(5)
-                        .similarityThreshold(SIMILARITY_THRESHOLD)   //相关向量阈值，测试后得出
+                        .topK(kbProperties.topK())
+                        .similarityThreshold(kbProperties.similarityThreshold())   // 相关向量阈值，默认值来自评测
                         .filterExpression("userId == '" + userId + "'") // ← 租户隔离
                         .build());
 
@@ -224,9 +209,9 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
                 .toList();
 
         double top = hits.isEmpty() ? 0.0 : hits.get(0).score();
-        log.info("检索完成 userId={} 问题长度={} 召回={} 最高分={} 阈值={} 耗时={}ms",
+        log.info("检索完成 userId={} 问题长度={} 召回={} 最高分={} 阈值={} topK={} 耗时={}ms",
                 userId, question == null ? 0 : question.length(), hits.size(),
-                String.format("%.3f", top), SIMILARITY_THRESHOLD,
+                String.format("%.3f", top), kbProperties.similarityThreshold(), kbProperties.topK(),
                 System.currentTimeMillis() - start);
 
         return hits;
@@ -311,9 +296,35 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
         kbChunkMapper.delete(Wrappers.<KbChunk>lambdaQuery().eq(KbChunk::getDocumentId, documentId));
         kbDocumentMapper.deleteById(documentId);
 
+        // 删除后同样落盘，否则重启会把已删的文档又加载回来
+        if (!vectorIds.isEmpty()) {
+            persistIndex();
+        }
+
         log.info("删除文档 userId={} documentId={} 文件名={} 删除块数={} 删除向量数={}",
                 userId, documentId, kbDocument.getFileName(), kbChunks.size(), vectorIds.size());
         return MessageConstant.DELETE_SUCCESS;
+    }
+
+    /**
+     * 把内存索引落盘。
+     *
+     * <p>{@code SimpleVectorStore} 是内存实现，不落盘的话每次重启都要重新 embedding 全量块。
+     * 落盘失败不影响本次请求（索引还在内存里），只是下次启动要重建，所以这里只记 warn。
+     */
+    private void persistIndex() {
+        try {
+            java.io.File file = new java.io.File(kbProperties.indexFile());
+            java.io.File parent = file.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs()) {
+                log.warn("创建索引目录失败，跳过落盘 dir={}", parent.getAbsolutePath());
+                return;
+            }
+            vectorStore.save(file);
+            log.info("向量索引已落盘 path={} 大小={}KB", file.getAbsolutePath(), file.length() / 1024);
+        } catch (Exception e) {
+            log.warn("向量索引落盘失败，下次启动将重新 embedding", e);
+        }
     }
 
     private String buildUserMessage(String question, List<KbSearchHit> hits) {
@@ -325,15 +336,5 @@ public class DocumentIndexServiceImpl implements DocumentIndexService {
                     .append(h.content()).append("\n\n");
         }
         return "资料：\n" + ctx + "\n用户问题：" + question;
-    }
-
-
-    static String cleanText(String raw) {
-        return raw.replace("\r\n", "\n")
-                // 行内单换行（前后都不是空行）→ 是排版折行，删掉
-                .replaceAll("(?<=\\S)\\n(?=\\S)", "")
-                // 三个以上连续换行 → 压成一个空行（段落分隔）
-                .replaceAll("\\n{3,}", "\n\n")
-                .trim();
     }
 }
