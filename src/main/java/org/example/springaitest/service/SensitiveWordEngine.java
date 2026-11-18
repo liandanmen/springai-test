@@ -26,7 +26,7 @@ public class SensitiveWordEngine {
         }
     }
 
-    public record ScanResult(String masked, boolean blocked, List<Hit> hits) {}
+    public record ScanResult(String masked, boolean blocked, List<Hit> hits) {}     //三个字段分别是：打码后的结果、是否命中了 BLOCK 规则、命中的词列表
 
     // ===================== 2. 树节点 =====================
     private static class Node {

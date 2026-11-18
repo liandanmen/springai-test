@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS soup_game_message (
+    id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    game_id VARCHAR(36) NOT NULL,
+    content TEXT NOT NULL,
+    type ENUM('USER', 'ASSISTANT', 'SYSTEM', 'TOOL') NOT NULL,
+    is_guess BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_soup_game_message_game_id_id (game_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
